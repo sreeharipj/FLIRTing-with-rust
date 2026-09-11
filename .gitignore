@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+
+# Donor and target binaries, signature sets, and the built database.
+# All regenerable; none of it is this repo's work to redistribute.
+*.stripped
+*.debug
+*.json.gz
+*.pkl
+corpus/
+bench/results/gt/
+bench/results/*.jsonl

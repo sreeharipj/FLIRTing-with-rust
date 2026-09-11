@@ -1,0 +1,16 @@
+# rustsig + the benchmark harness (bench/scripts/*.py).
+# Pinned to the versions these numbers were produced and re-verified against.
+#
+#   python3 -m pip install -r requirements.txt
+#
+# Not on PyPI, install separately (see rustsig/README.md):
+#   cargo install rustfilt          # demangling, must be on PATH
+#
+# The angr-based FLIRT applier (bench/scripts/flirt_angr.py) has its own,
+# heavier dependency set -- see requirements-angr.txt.
+
+capstone==5.0.6
+pyelftools==0.33
+
+# Only needed to `label` a PE32+ target; ELF-only workflows can skip it.
+pefile==2024.8.26
