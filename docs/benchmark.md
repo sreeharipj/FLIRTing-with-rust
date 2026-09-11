@@ -4,28 +4,29 @@ The measurement, and the harness bug that made the first version of it wrong in 
 
 ## Setup
 
-**Binaries.** 13 real Rust CLI tools, each as a `.stripped` binary with a DWARF `.debug` twin.
+The binaries are 13 real Rust CLI tools, each as a `.stripped` file with a DWARF `.debug` twin.
 Neither tool ever sees the twin; it is only the ruler's source. Nine were built with LTO, four
 without.
 
-**Ruler.** [`unhusk`](https://github.com/sreeharipj/unhusk)'s DWARF oracle — for each function,
-is this author code or library code, and which. The same oracle RIFT's own benchmark uses.
+The ruler is [`unhusk`](https://github.com/sreeharipj/unhusk)'s DWARF oracle. For each function
+it says whether the code is author code or library code, and which library. RIFT's own benchmark
+uses the same oracle.
 
-**FLIRT.** [RIFT](https://github.com/microsoft/RIFT) end-to-end, not a re-implementation: it
-resolves the target's rustc version from the build hash, installs that toolchain, recompiles the
-dependency crates, and emits FLIRT signature files. Applied with radare2's `zfs`. RIFT resolved
-`nightly-2026-04-22` for every binary; signature counts run 12 (zoxide) to 50 (bat).
+The FLIRT side is [RIFT](https://github.com/microsoft/RIFT) end-to-end, not a re-implementation.
+RIFT resolves the target's rustc version from the build hash, installs that toolchain, recompiles
+the dependency crates, and emits FLIRT signature files. radare2's `zfs` applies them. RIFT
+resolved `nightly-2026-04-22` for every binary, and signature counts run 12 (zoxide) to 50 (bat).
 
-**Metric.** `library_matched / n_truth_library` — RIFT's own definition. Denominators were
-verified equal between the two pipelines on every binary; any mismatch was dropped rather than
-reported.
+The metric is `library_matched / n_truth_library`, which is RIFT's own definition. Denominators
+were verified equal between the two pipelines on every binary. Any mismatch was dropped rather
+than reported.
 
-**Function universe.** `.eh_frame` FDEs from the stripped binary. This matters more than
-anything else here — see below.
+The function universe is the `.eh_frame` FDEs from the stripped binary. This matters more than
+anything else here, as the next section shows.
 
 ## The correction
 
-The harness this started from built its radare2 command list as `["aaa"] + [zfs …] + ["aflj"]`.
+The harness this started from built its radare2 command list as `["aaa"] + [zfs ...] + ["aflj"]`.
 `zfs` matches only against functions radare2 has already created, so `aaa` silently defined
 FLIRT's candidate set. The scorer then divided by the whole `.eh_frame` universe, and the
 comparison tool was handed that whole universe directly.
@@ -34,8 +35,8 @@ comparison tool was handed that whole universe directly.
 every function and shown 59% of them.
 
 A positive control settles where the loss is. Take a binary built with `1.90.0` and match it
-against RIFT's own `rustc-1.90.0` signature — generated from the very sysroot rlibs that binary
-links, so the bytes are identical by construction and every miss belongs to the applier:
+against RIFT's own `rustc-1.90.0` signature. That signature comes from the very sysroot rlibs the
+binary links, so the bytes are identical by construction and every miss belongs to the applier:
 
 | input | r2 functions | pattern-backed found by r2 | FLIRT-named | **of those r2 found** |
 |---|---|---|---|---|
@@ -50,13 +51,14 @@ column: on the stripped input radare2 creates 412 functions where there are 755,
 of the 621 that have a pattern. The patterns are there, the bytes are there, `zfs` is never
 asked.
 
-It is a default, not a limitation — `aaa` finds 489 of 755, `aaaa` and `aaa; aap` both find 750.
+It is a default, not a limitation. `aaa` finds 489 of 755, and `aaaa` and `aaa; aap` both find
+750.
 
 ## Results
 
 Three applications per binary: the harness default, the harness plus radare2's prelude scan, and
 radare2 seeded with the `.eh_frame` function starts (`af @ <addr>` per FDE). Seeding uses no
-ground truth — `.eh_frame` is in the stripped file. It is the like-for-like column.
+ground truth, because `.eh_frame` is in the stripped file. It is the like-for-like column.
 
 | crate | LTO | n_lib | sigs | `aaa` | `aaa; aap` | **FDE-seeded** | gain | rustsig-std |
 |---|---|---|---|---|---|---|---|---|
@@ -75,14 +77,14 @@ ground truth — `.eh_frame` is in the stripped file. It is the like-for-like co
 | xsv | n | 2052 | 28 | 36.70% | 52.83% | **71.8%** | 1.96x | 44.5% |
 
 Median FLIRT library recall: **24.7%**. Median rustsig-std: **47.7%**. Median per-binary ratio
-**2.24x**, rustsig winning 9 of 13. **FLIRT wins grex, xsv, ripgrep and tokei** — the whole
-no-LTO stratum except dust, and one from inside the LTO stratum.
+**2.24x**, rustsig winning 9 of 13. **FLIRT wins grex, xsv, ripgrep and tokei**. That is the
+whole no-LTO stratum except dust, plus one binary from inside the LTO stratum.
 
 ## By bytes, not by functions
 
-`aaa` misses are dominated by small leaf functions — on zoxide, the 100 functions matched under
-`aaa` have median size 146 bytes, the 180 additionally recovered by FDE-seeding have median size
-**14**. Re-scoring by library bytes covered:
+`aaa` misses are dominated by small leaf functions. On zoxide, the 100 functions matched under
+`aaa` have median size 146 bytes, and the 180 additionally recovered by FDE-seeding have median
+size **14**. Re-scoring by library bytes covered:
 
 | crate | LTO | by count: `aaa` → seeded | by **bytes**: `aaa` → seeded |
 |---|---|---|---|
@@ -101,8 +103,9 @@ no-LTO stratum except dust, and one from inside the LTO stratum.
 | xsv | n | 36.7% → 71.8% (1.96x) | 38.9% → 58.9% (1.51x) |
 
 Median by bytes: **9.6%** over all 13, **8.3%** on the LTO stratum. On most LTO binaries the
-correction is almost entirely tiny functions — median byte-gain 1.27x against a count-gain of
-2.39x — so FLIRT covers under a tenth of library *code volume* there however it is scored.
+correction is almost entirely tiny functions, at a median byte-gain of 1.27x against a count-gain
+of 2.39x. FLIRT therefore covers under a tenth of library *code volume* there, however it is
+scored.
 tokei is the exception inside the stratum, at 3.70x.
 
 ## LTO
@@ -115,8 +118,8 @@ tokei is the exception inside the stratum, at 3.70x.
 
 The mechanism is not a discovery artifact: `aaa`'s discovery ceiling is *better* on the LTO side
 (61.3% vs 52.8%), so the stratification is not the harness. And a uniformly under-applying
-harness preserves a ratio — which is exactly why the corrected numbers reproduce the 3.2x
-almost exactly, and why that agreement is confirmation of the caution rather than of the harness.
+harness preserves a ratio. That is exactly why the corrected numbers reproduce the 3.2x almost
+exactly, and why the agreement confirms the caution rather than the harness.
 
 RIFT recompiles the crate from source. A fresh build cannot reproduce the link-time inlining and
 cross-crate decisions the target's LTO made, so the bytes diverge and the patterns miss. An
@@ -133,27 +136,27 @@ FLIRT essentially cannot false-positive, and near-exact byte matching means that
 regardless of what corpus the signatures came from. This is a real advantage and it does not
 degrade.
 
-rustsig's naming precision on the same corpus is 97–99.7% (median 98.9%), with one outlier —
-`sd` at 90.9% — that is undiagnosed rather than averaged away.
+rustsig's naming precision on the same corpus is 97% to 99.7% (median 98.9%). One outlier, `sd`
+at 90.9%, is undiagnosed rather than averaged away.
 
-## What could not be tested, and one claim that dissolved
+## What could not be tested, and one correction
 
-**IDA's own applier.** IDA Free 9.3 ships no IDAPython plugin and rejects the `-S` batch switch,
-so RIFT's intended path cannot be driven headlessly. FDE-seeding is the closest proxy and a fair
-one — IDA's ELF loader parses `.eh_frame` and creates functions from FDEs, which is precisely the
-universe the seeded run gets. Whether IDA then matches at the same rate as `zfs` is inference
+IDA's own applier could not be tested. IDA Free 9.3 ships no IDAPython plugin and rejects the
+`-S` batch switch, so RIFT's intended path cannot be driven headlessly. FDE-seeding is the
+closest proxy, and a fair one. IDA's ELF loader parses `.eh_frame` and creates functions from
+FDEs, which is precisely the universe the seeded run gets. Whether IDA then matches at the same rate as `zfs` is inference
 from the positive control, not measurement.
 
-**A cross-check against RIFT's published numbers cannot be run.** There are none. Checked:
-upstream `microsoft/RIFT` (`git grep` over all `*.md` — no benchmark), the `version_1_stable`
+A cross-check against RIFT's published numbers cannot be run. There are none. Checked:
+upstream `microsoft/RIFT` (`git grep` over all `*.md`, no benchmark), the `version_1_stable`
 RECON 2025 branch (walkthroughs, no counts), the Microsoft Security Blog (one illustrative
 figure, no recall number), secondary press (qualitative). A ">90% of library functions labeled"
 line surfaces in search-engine summaries but is not in either source when fetched directly.
 
-**One number we cited as external corroboration was ours.** An earlier draft said RIFT's LTO
+One number we cited as external corroboration was ours. An earlier draft said RIFT's LTO
 degradation "reproduces the 4.3x its own study found." That 4.3x traces to a local
-`bench/STANDUP.md` — the same radare2 harness, measured twice. It is a self-citation and should
-not be read as validation by anyone.
+`bench/STANDUP.md`, which is the same radare2 harness measured twice. It is a self-citation and
+should not be read as validation by anyone.
 
 ## Reproduce
 
@@ -175,9 +178,9 @@ Regenerated signature sets are not checked in (29 MB across the 13).
 ## Caveats
 
 1. The corrected column re-derives FLIRT only. The rustsig column is unmodified.
-2. FDE-seeding is an upper bound on *discovery*, not on FLIRT: it reaches 93–97% of the FDE
+2. FDE-seeding is an upper bound on *discovery*, not on FLIRT: it reaches 93% to 97% of the FDE
    universe, so the corrected figures are still slightly low.
 3. The IDA path remains untested.
-4. `aap` is not free — a prelude scan can create functions where there are none. It produced no
+4. `aap` is not free. A prelude scan can create functions where there are none. It produced no
    author-side false positives here; that was not stress-tested beyond this corpus.
 5. n=13, one corpus, one architecture, one ruler. Nothing is extrapolated.

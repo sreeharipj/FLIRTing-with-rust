@@ -115,7 +115,7 @@ reconstruct it. LTO is one coordinate of that configuration rather than the mech
 
 The same choice produces a clean negative. Indexing rustup's shipped `.rlib`s gives a
 version-exact database at zero build cost, and 4.3% coverage, because monomorphized generics are
-not in the rlib — `Vec<Foo>::push` is instantiated in the user's compilation. A database that
+not in the rlib. `Vec<Foo>::push` is instantiated in the user's compilation. A database that
 wants generic coverage has to come from linked binaries.
 
 `nm` cannot read modern std rlibs at all; binutils' gold LTO plugin fails on LLVM 21 bitcode.
@@ -125,14 +125,18 @@ Parse the ELF symbol table directly.
 
 Three rules.
 
-**Ambiguity drops the entry.** If donors disagree on the erased identity for one hash, the entry
-is discarded rather than guessed. This is where the precision comes from, and it is not cheap:
-77.1% of matched-flag misses are byte-identical bodies discarded by this rule.
+### Ambiguity drops the entry
+
+If donors disagree on the erased identity for one hash, the entry is discarded rather than
+guessed. This is where the precision comes from, and it is not cheap: 77.1% of matched-flag
+misses are byte-identical bodies discarded by this rule.
 [`inlining.md`](inlining.md) covers what to do about that.
 
-**Forwarding shims drop, about 3.6% of entries.** `library/core/src/fmt/mod.rs`'s `fmt_refs!`
-macro generates `impl<T: Debug> Debug for &T { fn fmt(&self, f) { Debug::fmt(&**self, f) } }`, and
-the same for `&mut T` and seven more traits. The body does not depend on the concrete type beyond
+### Forwarding shims drop, about 3.6% of entries
+
+`library/core/src/fmt/mod.rs`'s `fmt_refs!` macro generates
+`impl<T: Debug> Debug for &T { fn fmt(&self, f) { Debug::fmt(&**self, f) } }`, and the same for
+`&mut T` and seven more traits. The body does not depend on the concrete type beyond
 which function it calls next, and the call target is masked, so every instantiation for every `T`
 hashes identically. One binary contains 1,134 such symbols. `Box`, `Rc`, `Arc` and `Weak` use the
 same idiom for `Debug`, `Display`, `PartialEq`, `PartialOrd`, `Ord` and `Hash`.
@@ -143,10 +147,10 @@ checked and deliberately excluded: `Box::clone` pre-allocates and calls `clone_t
 is more than a masked-identical forward. The method list is curated per type rather than blanket.
 
 Measured before shipping, on 5 cross-corpus targets: median precision 93.3% → 95.6%, floor 85.8%
-→ 91.1%, recall cost 0.3–2.4pp. The filter runs at database-build time, so an old database used
-with new code is not fixed.
+→ 91.1%, recall cost 0.3 to 2.4pp. The filter runs at database-build time, so an old database
+used with new code is not fixed.
 
-**Confidence counts distinct donor binaries, not occurrences.**
+Confidence counts distinct donor binaries, not occurrences. The next section covers why.
 
 ## 6. Confidence as a fraction of the pool
 
@@ -208,7 +212,7 @@ std-only precision is higher than a full database's, 99.7% against 98.6%. Third-
 introduce version skew, where two versions of a crate compile to the same body under different
 names. std is pinned by the toolchain and mostly does not.
 
-The cross-corpus number started at 33–53%. Nine findings moved it: donor breadth had only been
+The cross-corpus number started at 33% to 53%. Nine findings moved it: donor breadth had only been
 tested against coverage and moves precision too; the database was absorbing statically-linked
 C/asm symbols; two `erase_generics` string bugs were scoring correct matches as collisions; an
 absolute confidence threshold does not scale with pool size; the donor corpus was built with one
@@ -220,9 +224,9 @@ impl-wrapper unwrap firing only when leading.
 Each of these produced a plausible-looking wrong number rather than an error.
 
 - The evaluation harness shares `erase_generics` with the tool. A bug that maps both sides the
-  same way is invisible and harmless. A bug that maps them differently — which is what happens
-  when one side comes from a symbol table and the other from DWARF, or one is v0-mangled and the
-  other legacy — scores correct matches as collisions. Two of the nine findings were this. The
+  same way is invisible and harmless. A bug that maps them differently scores correct matches as
+  collisions. That happens when one side comes from a symbol table and the other from DWARF, or
+  when one is v0-mangled and the other legacy. Two of the nine findings were this. The
   symptom is always that precision is lower than it should be.
 - Long wrong matches are the diagnostic. A 300-instruction function is not an accidental
   collision. Every precision finding came from sorting wrong matches by length descending and

@@ -3,21 +3,23 @@
 Four things, measured. Build configuration, dependency overlap, toolchain drift, and the shape of
 the target itself.
 
-## 1. Build configuration is a product, not a neighbourhood
+## 1. Build configuration has to match on every axis
 
-Two programs, `fsum` (donor) and `vault` (target), sharing five pinned dependencies — sha2 0.10.9,
-aes 0.8.4, walkdir 2.5.0, serde_json 1.0.145, base64 0.22.1 — with deliberately different host
-code and deliberately different *usage* of those dependencies: derive-based serde against `Value`
-manipulation, concrete `Sha256`/`Sha512` against generic `fn f<D: Digest>`, standard against
-URL-safe base64, `max_depth` walks against `filter_entry` walks. Resolved dependency versions
-verified identical between the two lockfiles. One pinned toolchain, 1.97.1 stable.
+Two programs, `fsum` (donor) and `vault` (target), share five pinned dependencies: sha2 0.10.9,
+aes 0.8.4, walkdir 2.5.0, serde_json 1.0.145 and base64 0.22.1. Their host code differs, and so
+does the way each program uses those dependencies: derive-based serde against `Value`
+manipulation, concrete `Sha256` and `Sha512` against a generic `fn f<D: Digest>`, standard
+base64 against URL-safe base64, and `max_depth` walks against `filter_entry` walks. The resolved
+dependency versions were verified identical between the two lockfiles. Both use one pinned
+toolchain, 1.97.1 stable.
 
-Twelve configurations, one factor at a time from `release, lto=false, codegen-units=16,
-opt-level=3, panic=unwind, overflow-checks=off, target-cpu=generic`, plus one combined "malware
-profile". Each `(program, config)` built in its own target directory and removed afterwards:
-cargo does not rebuild dependencies when only the host crate changes, and sharing artifacts
-between donor and target makes every number spuriously high. Scored with the unmodified
-`build()`, `hash_functions()` and `erase_generics()`. Nothing was tuned.
+There are twelve configurations. Each one changes a single factor from the baseline `release,
+lto=false, codegen-units=16, opt-level=3, panic=unwind, overflow-checks=off,
+target-cpu=generic`, and one further configuration combines them into a "malware profile". Each
+`(program, config)` pair was built in its own target directory and removed afterwards. Cargo
+does not rebuild dependencies when only the host crate changes, and sharing artifacts between
+donor and target makes every number spuriously high. Scoring used `build()`, `hash_functions()`
+and `erase_generics()` unmodified. Nothing was tuned.
 
 | single-axis mismatch (donor → target) | third-party match rate |
 |---|---|
@@ -31,38 +33,40 @@ between donor and target makes every number spuriously high. Scored with the unm
 | `opt-level=3` → `opt-level=z` | 4.0% |
 | `target-cpu=generic` → `native` | 1.1% |
 
-Against the profile real Rust malware ships — fat LTO, `codegen-units=1`, `panic=abort`,
-`opt-level=z` — a donor built with default `--release` flags scores 5.9%.
+Real Rust malware ships with fat LTO, `codegen-units=1`, `panic=abort` and `opt-level=z`.
+Against that profile, a donor built with default `--release` flags scores 5.9%.
 
-**LTO is not the mechanism.** A fresh build reproduces LTO decisions fine provided it uses the
-same LTO setting: `fat→fat` scores 53.8% and `lto=false→lto=false` scores 51.9%, statistically
-indistinguishable (95% Wilson intervals 42.9–64.5 and 43.4–60.4). What a fresh build cannot
-reproduce is an *unknown* configuration, and every axis tested is roughly as destructive as LTO.
+LTO is not the mechanism. A fresh build reproduces LTO decisions as long as it uses the same LTO
+setting. `fat→fat` scores 53.8% and `lto=false→lto=false` scores 51.9%, which is statistically
+indistinguishable (95% Wilson intervals 42.9 to 64.5, and 43.4 to 60.4). What a fresh build
+cannot reproduce is an *unknown* configuration, and every axis tested is about as destructive as
+LTO.
 
 Normalisation does tolerate more than a byte pattern does, and that shows up as roughly 100%
 naming precision in every cell that matches anything at all. It does not tolerate a one-flag
 difference.
 
-The corollary for [`method.md`](method.md) §4: an indexed donor binary inherits the target's whole
-six-dimensional build configuration implicitly, while a recompiling tool has to guess it. LTO is
-one coordinate of that vector. The measured LTO stratification in
-[`benchmark.md`](benchmark.md) is unaffected, but its explanation changes.
+This is the basis for [`method.md`](method.md) §4. An indexed donor binary carries the target's
+whole build configuration implicitly, across all six axes. A recompiling tool has to guess it.
+LTO is one of the six. The measured LTO stratification in [`benchmark.md`](benchmark.md) is
+unaffected, but its explanation changes.
 
 ### At scale, and on a second pair
 
-Replicated with 25 shared crates instead of 5, at 3–13x the per-cell n:
+Replicated with 25 shared crates instead of 5, at 3 to 13 times the per-cell n:
 
-- Third-party diagonal, 25 headline crates: median 52.6% (range 51.2–59.3%).
+- Third-party diagonal, 25 headline crates: median 52.6% (range 51.2% to 59.3%).
 - All third-party including transitive: median 69.5%.
 - Naming precision on the diagonal: 99.4%.
-- One flag off: 1–35% pooled, and 0.0% by per-crate median — a few large crates
-  (`regex_automata`, `aho_corasick`) carry the entire pooled off-diagonal number while most
+- One flag off: 1% to 35% pooled, and 0.0% by per-crate median. A few large crates
+  (`regex_automata`, `aho_corasick`) carry the entire pooled off-diagonal number, while most
   crates get nothing.
 - Malware profile against a default-release donor: 2.1%.
 
-A second independent donor/target pair scores 44.7% on its own designed pairing, inside the
-predeclared 40–70% band but below the first pair's observed range. Cross-substituted donors do
-**not** score lower than matched pairs — they score 5–13 points *higher* in both directions:
+A second independent donor/target pair scores 44.7% on its own designed pairing. That is inside
+the predeclared 40% to 70% band, but below the first pair's observed range. Cross-substituted
+donors do **not** score lower than matched pairs. They score 5 to 13 points *higher* in both
+directions:
 
 | donor ↓ / target → | `beacon` | `vaultpack` |
 |---|---|---|
@@ -81,39 +85,39 @@ produces 2 matches in 637 functions, both the known case of `memchr` being vendo
 
 Three controls, on the question of what actually moves coverage.
 
-**Build environment and toolchain: not the limit.** Same program, two independent builds, one
-database:
+Build environment and toolchain are not the limit. This is one program, built twice
+independently, scored against one database:
 
 | target | functions | named | coverage | precision |
 |---|---|---|---|---|
 | ripgrep, corpus build (same pipeline as DB) | 8,790 | 4,028 | 45.8% | 94.5% |
-| ripgrep, different machine, rustc ~6 releases newer | 8,959 | 3,990 | **44.5%** | **94.1%** |
+| ripgrep, different machine, rustc about 6 releases newer | 8,959 | 3,990 | **44.5%** | **94.1%** |
 | hexyl, same different-machine build | 1,309 | 86 | **6.6%** | 30.2% |
 
 Rebuilding ripgrep elsewhere on a much newer toolchain cost 1.3 points of coverage and 0.4 of
 precision. n=1, and it is a claim about coverage only.
 
-**Dependency overlap: the limit.** hexyl collapses to 6.6% in the same experiment where ripgrep
+Dependency overlap is the limit. hexyl collapses to 6.6% in the same experiment where ripgrep
 holds 44.5%, built the same way by the same script minutes apart. hexyl is small (1,309 functions)
 and shares few crates with the database. ripgrep shares `regex`, `ignore`, `globset`, `clap` and
 `memchr` with `fd` and the others.
 
 | you have | coverage | precision |
 |---|---|---|
-| donors sharing the target's dependencies | 45–75% | ~99% |
-| std-only database, same toolchain era | ~29% | ~99.7% |
-| toolchain rlibs only, zero build cost | ~4% | high |
-| small target, unfamiliar dependencies | ~7% | low and noisy |
-| real malware (small, unlike the donor pool) | ~0.3% | 80–95%, n=2 |
+| donors sharing the target's dependencies | 45% to 75% | about 99% |
+| std-only database, same toolchain era | about 29% | about 99.7% |
+| toolchain rlibs only, zero build cost | about 4% | high |
+| small target, unfamiliar dependencies | about 7% | low and noisy |
+| real malware (small, unlike the donor pool) | about 0.3% | 80% to 95%, n=2 |
 
-Donor breadth is close to a free lunch — it improves coverage, precision at a fixed confidence
-fraction, and the precision floor simultaneously — but it saturates. Holding one target fixed and
-growing the donor set: 1 donor 5.5%, 2 donors 15.8%, 3 donors 20.6%, 5 donors 28.7%, 8 donors
-30.5%, 13 donors 32.2%. Mostly saturated by 8 for a target whose workload is unlike the donor set.
+Donor breadth improves three things at once: coverage, precision at a fixed confidence fraction,
+and the precision floor. It also saturates. Holding one target fixed and growing the donor set
+gives 1 donor 5.5%, 2 donors 15.8%, 3 donors 20.6%, 5 donors 28.7%, 8 donors 30.5%, 13 donors
+32.2%. Mostly saturated by 8 for a target whose workload is unlike the donor set.
 
-**Same-corpus provenance is not the explanation either.** Leave-one-out inside a second corpus,
-holding toolchain, build method and source provenance fixed, against the 13-donor set on the same
-targets:
+Same-corpus provenance is not the explanation either. This is leave-one-out inside a second
+corpus, holding toolchain, build method and source provenance fixed, measured against the
+13-donor set on the same targets:
 
 | target | donors = the 13 | donors = same-corpus LOO (4) |
 |---|---|---|
@@ -128,7 +132,7 @@ instantiate more of std than 4 binaries do. Toolchain matching governs whether a
 once you have it; donor breadth governs whether you have it at all, and with small donor sets
 breadth dominates.
 
-## 3. std is rewritten faster than the malware is recompiled
+## 3. std changes faster than malware is rebuilt
 
 Same program built with 5 rustc toolchains, comparing std function bodies by generic-erased path:
 
@@ -139,10 +143,10 @@ Same program built with 5 rustc toolchains, comparing std function bodies by gen
 | **1.91** | | | 100% | 49.2% | 24.2% |
 | **1.93** | | | | 100% | 56.9% |
 
-Adjacent releases share 49–69% of std bodies. 1.88 to 1.97 keeps 20.4%.
+Adjacent releases share 49% to 69% of std bodies. 1.88 to 1.97 keeps 20.4%.
 
-Mangled symbol names cannot be compared across toolchains at all — they embed a per-compilation
-disambiguator hash, so name-keyed matching finds literally zero overlap. This has to be done on
+Mangled symbol names cannot be compared across toolchains at all. They embed a per-compilation
+disambiguator hash, so name-keyed matching finds zero overlap. The comparison has to run on
 generic-erased demangled paths.
 
 That churn does not propagate end to end, because third-party crate code carries the coverage and
@@ -152,8 +156,8 @@ toolchain *era* rather than universally.
 ### Names do not survive drift, even where coverage does
 
 On real ransomware samples (static analysis only, nothing executed), raw precision at the shipped
-database's default confidence measured 48–50%. Spot-checking the wrong matches long-first — a
-long-function collision is structurally implausible as an accident — produced an immediate
+database's default confidence measured 48% to 50%. The wrong matches were checked longest first,
+because a long-function collision is implausible as an accident. That produced an immediate
 pattern:
 
 ```
@@ -186,7 +190,7 @@ and it is the bar for adding any future synonym.
 
 Read the counts, not the percentages. Scored functions went 27 → 41 and 6 → 15. The synonym is
 applied symmetrically at build and label time, so mapping it did not merely re-classify
-already-scored functions — it brought functions into scope that previously had no comparable
+already-scored functions. It brought functions into scope that previously had no comparable
 identity on one side. The before and after percentages are over different sets.
 
 n=2 distinct codebases, not n=2 samples: a third sample with a different sha256 gave identical
@@ -207,18 +211,18 @@ Compiler version read from the build hash rustc embeds in panic-location paths
 failing that from the version string in the ELF `.comment` section.
 
 - 460 carry a recoverable compiler version. Those span **rustc 1.46 (2020) through 1.92 (December
-  2025)** — 25 distinct point releases.
+  2025)**, which is 25 distinct point releases.
 - The remaining 230, nearly all one family, strip every version marker and can only be bracketed
   by build structure.
-- **Four out of five dated builds came from a nightly compiler, not a release.** Two nightly pins
+- Four out of five dated builds came from a nightly compiler, not a release. Two nightly pins
   alone account for seventy percent of them.
 - Families cluster: most pin one or two compilers and reuse them across dozens or hundreds of
   builds.
 
-Combined with §3, this sets the storage cost of keeping a database current. std is ~29% of a
-stripped Rust binary, a donor set built at version *V* retains 49–69% of std bodies one release
-away and ~20% nine releases away, so a database is useful within about one release of the
-target's toolchain. Covering the observed range is a fixed, linear amount of storage per rustc
+Combined with §3, this sets the storage cost of keeping a database current. std is about 29% of
+a stripped Rust binary. A donor set built at version *V* retains 49% to 69% of std bodies one
+release away, and about 20% nine releases away. A database is therefore useful within about one
+release of the target's toolchain. Covering the observed range is a fixed, linear amount of storage per rustc
 release, not a one-time build.
 
 ## Reproducing
@@ -230,8 +234,8 @@ python3 bench/scripts/evaluate.py             # coverage / precision / library r
 python3 bench/scripts/frac_confidence_exp.py  # the confidence-fraction sweep
 ```
 
-The index cache stores raw per-donor rows — hash, instruction count, erased identity,
-representative name — rather than a built database, so any filtering configuration can be
-constructed from one disassembly pass. A 200-point threshold sweep over both target sets takes
+The index cache stores raw per-donor rows (hash, instruction count, erased identity,
+representative name) rather than a built database, so any filtering configuration can be built
+from one disassembly pass. A 200-point threshold sweep over both target sets takes
 about two minutes instead of an hour, which is the only reason nine iterations of precision work
 were affordable.

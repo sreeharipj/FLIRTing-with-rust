@@ -28,9 +28,9 @@ python3 rustsig.py label db.json.gz target.stripped --min-confidence-frac 0.10
 `build` takes *unstripped* binaries: donors, not the target. It needs `nm` symbols. `label` takes
 the stripped binary you are trying to read.
 
-`build` parallelises across donors with a 4-worker cap. That cap is deliberate — some real debug
-binaries run 300–500 MB and each worker holds one; 8 and 16 wide died silently on a 14 GB
-machine. A 100-donor pool takes minutes.
+`build` parallelises across donors with a 4-worker cap. That cap is deliberate. Some real debug
+binaries run 300 to 500 MB, and each worker holds one. At 8 and 16 wide the run died silently on
+a 14 GB machine. A 100-donor pool takes minutes.
 
 Databases are written as `.json.gz` by extension and read by gzip magic byte, so a renamed or
 redistributed database still loads.
@@ -52,22 +52,23 @@ Measured on cross-corpus targets at a 110-donor pool. The same table at 32 donor
 median and 85.2% floor at 0.08.
 
 It is a fraction rather than an absolute count because an absolute threshold needs re-tuning
-every time the pool grows — precision drifts *down* at fixed N as new donors stack lower-quality
-matches under an unchanged bar. `--min-confidence N` overrides with an absolute count; `N=1` is
-the max-recall "is this library code at all" mode, for elimination rather than naming.
+every time the pool grows. Precision drifts *down* at fixed N, because new donors stack
+lower-quality matches under an unchanged bar. `--min-confidence N` overrides with an absolute
+count. `N=1` is the max-recall "is this library code at all" mode, for elimination rather than
+naming.
 
 ## Building a donor corpus
 
 More donors improves coverage, precision at a given confidence fraction, and the precision floor,
-and saturates around 8–13 donors for a target unlike the pool.
+and saturates at about 8 to 13 donors for a target unlike the pool.
 
 `../bench/scripts/grow_corpus.sh` builds a donor set with `cargo install` and debug info forced on
 (`CARGO_PROFILE_RELEASE_DEBUG=true CARGO_PROFILE_RELEASE_STRIP=false`, since most published crates
 strip release builds). Adapt the crate list to your target's domain. Keep the `.debug` copy for
 `build`.
 
-The database behind the numbers in this repo was built from 110 real-world crates — CLI, TUI and
-async/network tools — and is ~9 MB. It is not checked in.
+The database behind the numbers in this repo was built from 110 real-world crates (CLI, TUI and
+async/network tools) and is about 9 MB. It is not checked in.
 
 ## Output
 
