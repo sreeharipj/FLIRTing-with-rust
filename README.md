@@ -19,9 +19,9 @@ recompiling a crate is therefore not the code that shipped.
   `.text`.
 - Generic erasure: `<Vec<u8> as Drop>::drop::h0123456789abcdef` becomes `alloc::vec::Vec::drop`,
   which raises naming precision from 77.8% to 99.1% at identical coverage.
-- Generic instantiations, the group FLIRT is weakest on, are the most stable group under
-  normalisation: 99.1% of them reproduce across independent builds, against 91.2% of plain
-  functions.
+- Generic instantiations are the most stable group under normalisation. 99.1% of them reproduce
+  across independent builds, against 91.2% of plain functions. Under raw byte matching they are
+  the least stable group.
 - Donors are binaries that someone already linked, not recompiled crates, so each donor carries
   its build configuration in its own bytes. Toolchain rlibs hold no monomorphized generics and
   give 4.3% coverage.
