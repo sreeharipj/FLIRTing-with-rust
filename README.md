@@ -34,6 +34,17 @@ python3 rustsig/rustsig.py build db.json.gz bat.debug ripgrep.debug ...   # unst
 python3 rustsig/rustsig.py label db.json.gz target.stripped              # stripped target
 ```
 
+## Compared with WARP
+
+[WARP](https://github.com/Vector35/warp) (Vector 35, ships with Binary Ninja) hashes a function's
+basic blocks with the relocatable instructions masked, then separates equal hashes with
+constraints such as call sites and neighbouring functions. rustsig hashes in the same family, and
+adds what a Rust binary needs. It erases generics, so `Vec<Foo>::push` and `Vec<Bar>::push` reach
+one identity instead of two. It takes function bounds from `.eh_frame`, so it needs no
+basic-block recovery and no analysis engine. It indexes Rust binaries that are already linked,
+because monomorphized generics exist nowhere else. It drops an ambiguous hash rather than
+constraining it, and a name needs agreement from a fraction of the donor pool.
+
 Docs: [benchmark](docs/benchmark.md), [method](docs/method.md), [inlining](docs/inlining.md),
 [limits](docs/limits.md).
 
