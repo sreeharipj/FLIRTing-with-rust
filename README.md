@@ -10,9 +10,23 @@ the library code. `rustsig`, in this repository, names 47.7% at 99.1% precision.
 | rustsig | **47.7%** | not scored |
 
 Rust monomorphizes generics, and the linker optimises across crates. A signature built by
-recompiling a crate is therefore not the code that shipped. rustsig hashes normalised function
-bodies from donor binaries that are already linked, so each donor carries its build configuration
-in its own bytes.
+recompiling a crate is therefore not the code that shipped.
+
+## Unique selling point
+
+- Normalised body hash: one token per instruction, masking only the fields a different link
+  changes, which are call targets, RIP-relative displacements and immediates that point into
+  `.text`.
+- Generic erasure: `<Vec<u8> as Drop>::drop::h0123456789abcdef` becomes `alloc::vec::Vec::drop`,
+  which raises naming precision from 77.8% to 99.1% at identical coverage.
+- Generic instantiations, the group FLIRT is weakest on, are the most stable group under
+  normalisation: 99.1% of them reproduce across independent builds, against 91.2% of plain
+  functions.
+- Donors are binaries that someone already linked, not recompiled crates, so each donor carries
+  its build configuration in its own bytes. Toolchain rlibs hold no monomorphized generics and
+  give 4.3% coverage.
+- Confidence is the fraction of the donor pool that agrees, not a fixed count, so the threshold
+  survives a growing pool. It measured stable from 32 to 110 donors.
 
 ```sh
 pip install capstone pyelftools && cargo install rustfilt
